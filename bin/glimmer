@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -e
+# Resolve project root, following symlink (pnpm global link + ~/.local/bin link)
+SOURCE="$0"
+if [ -L "$SOURCE" ]; then
+  LINK="$(readlink "$SOURCE")"
+  case "$LINK" in
+    /*) SOURCE="$LINK" ;;
+    *) SOURCE="$(dirname "$SOURCE")/$LINK" ;;
+  esac
+fi
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+if [ -f "$ROOT/node_modules/.bin/tsx" ]; then
+  TSX="$ROOT/node_modules/.bin/tsx"
+else
+  TSX="npx tsx"
+fi
+exec $TSX --env-file-if-exists="$ROOT/.env.local" "$ROOT/src/cli.ts" "$@"

@@ -4,6 +4,10 @@
   "private": true,
   "description": "Local CLI for Meta's Glimmer + Muse Spark 1.2 tool-use eval harness — Ollama + stubbed tools, reproducible comparison",
   "type": "module",
+  "bin": {
+    "glimmer": "bin/glimmer",
+    "glimmer-cli": "bin/glimmer"
+  },
   "engines": {
     "node": ">=18"
   },
@@ -16,11 +20,11 @@
     "lint": "biome check",
     "format": "biome format --write",
     "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
     "eval": "tsx --env-file-if-exists=.env.local src/eval/runner.ts",
     "eval:mock": "tsx --env-file-if-exists=.env.local src/eval/runner.ts --mock",
     "glimmer:setup": "tsx --env-file-if-exists=.env.local scripts/glimmer-setup.ts",
-    "glimmer:pull": "tsx --env-file-if-exists=.env.local scripts/glimmer-setup.ts",
-    "build": "tsc --noEmit"
+    "glimmer:pull": "tsx --env-file-if-exists=.env.local scripts/glimmer-setup.ts"
   },
   "dependencies": {},
   "devDependencies": {

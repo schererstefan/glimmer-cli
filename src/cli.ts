@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /**
  * Glimmer CLI — one-shot + interactive REPL with streaming + tool traces.
  * Mirrors scherer-ai/scripts/ask-cli.ts pattern.

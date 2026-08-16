@@ -2,7 +2,7 @@
 
 Local CLI for **Meta's Glimmer** + **Muse Spark 1.2** — with a reproducible tool-use eval harness.
 
-> **Status (2026-08-16):** Glimmer weights are not yet published on `ollama.com/library` (404 — see [`docs/research/glimmer-availability-2026-08-16.md`](docs/research/glimmer-availability-2026-08-16.md)). This repo is model-agnostic: it runs today via a deterministic mock, via `llama3.1:8b` through Ollama, or via `Muse Spark 1.2` when you provide credentials. Glimmer is a one-line swap (`GLIMMER_MODEL`) once the checkpoint ships.
+> **Status (2026-08-16 20:30 UTC):** Muse Glimmer 30B shipped Aug 10 — live on Ollama `muse-glimmer` 18GB Q4_K_M (27.9B, 131K, tools/vision/thinking) via `ollama pull muse-glimmer` (see [`docs/research/glimmer-availability-2026-08-16.md`](docs/research/glimmer-availability-2026-08-16.md)). Repo defaults to `GLIMMER_MODEL=muse-glimmer` with `llama3.1:8b` fallback. Native CLI: `glimmer` (after `pnpm link --global` or `ln -sf $PWD/bin/glimmer ~/.local/bin/glimmer`).
 
 ![CI](https://img.shields.io/badge/ci-pnpm%20test%20%2B%20mock%20eval-blue) ![Stack](https://img.shields.io/badge/stack-TS%20%2B%20tsx%20%2B%20vitest%20%2B%20biome-38bdf8) ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -13,31 +13,37 @@ git clone https://github.com/schererstefan/glimmer-cli.git
 cd glimmer-cli
 pnpm install
 
-# No Ollama, no API keys — mock provider (CI default)
+# Native CLI (no pnpm prefix needed after link)
+ln -sf $PWD/bin/glimmer ~/.local/bin/glimmer  # or: pnpm link --global (adds $PNPM_HOME/bin to PATH via pnpm setup)
+glimmer --help
+glimmer --provider mock "What's the weather in Seattle tomorrow?"
+glimmer --provider mock            # interactive REPL, --verbose for tool traces
+
+# pnpm wrappers still work
 pnpm cli --provider mock "What's the weather in Seattle tomorrow?"
-pnpm cli --provider mock            # interactive REPL, --verbose for tool traces
 pnpm test                           # vitest — all mocked, no network
 pnpm eval --mock                    # runs 45 cases against mock, writes evals/COMPARISON.md
 ```
 
-## With a local model (Ollama)
+## With a local model (Ollama) — Muse Glimmer 30B
 
 ```bash
 # Install Ollama if needed
 brew install ollama
-ollama serve &
+brew services start ollama  # or: ollama serve &
 
-# Pull the fallback until Glimmer is public
-ollama pull llama3.1:8b
-pnpm cli --provider glimmer --model llama3.1:8b "What's the weather in Seattle tomorrow?"
+ollama pull muse-glimmer            # 18GB Q4_K_M 27.9B — primary
+glimmer --provider glimmer "What's the weather in Seattle tomorrow?"
+glimmer --provider glimmer --model muse-glimmer --verbose "Book a meeting..."
 
-# Once Glimmer ships:
-pnpm glimmer:setup                  # pulls $GLIMMER_MODEL (default glimmer:8b-instruct-q4_K_M) or fallback
-# or dry-run to see what would happen:
+# also available
+ollama pull llama3.1:8b             # 4.9GB fallback
+glimmer --provider glimmer --model llama3.1:8b "Hello"
+pnpm glimmer:setup                  # pulls $GLIMMER_MODEL (default muse-glimmer) or fallback
 pnpm glimmer:setup --dry-run
 ```
 
-Hardware: `8B Q4_K_M` ≈ 5 GB RAM on arm64; `70B Q4` ≈ 40 GB (not for base Mac).
+Hardware: `muse-glimmer Q4_K_M` ≈ 18 GB RAM/disk, `8B Q4_K_M` ≈ 5 GB; `70B Q4` ≈ 40 GB (not for base Mac). Glimmer shows 15%/85% CPU/GPU via `ollama ps`.
 
 ## With Muse Spark 1.2
 
@@ -51,12 +57,16 @@ No credentials → Spark provider returns a mock notice and does not spend token
 ## CLI
 
 ```bash
+glimmer --help
+glimmer "Hello; what tools do you have?"              # one-shot (native)
+glimmer --provider glimmer --model muse-glimmer "Hi"  # explicit model (default is muse-glimmer)
+glimmer --provider mock --verbose "Plan my trip..."   # show tool I/O
+glimmer --provider mock --json "Calculate 42*19"      # machine-readable JSON lines
+glimmer                                               # REPL: you ▸ / glimmer ▸, exit/Ctrl-D to quit
+
+# pnpm wrappers (same)
 pnpm cli --help
-pnpm cli "Hello; what tools do you have?"              # one-shot
-pnpm cli --provider glimmer --model llama3.1:8b "Hi"   # explicit model
-pnpm cli --provider mock --verbose "Plan my trip..."   # show tool I/O
-pnpm cli --provider mock --json "Calculate 42*19"      # machine-readable JSON lines
-pnpm cli                                               # REPL: you ▸ / glimmer ▸, exit/Ctrl-D to quit
+pnpm cli "Hello; what tools do you have?"
 ```
 
 Flags: `--provider glimmer|spark|mock`, `--model <id>`, `--verbose`, `--json`, `--help`.

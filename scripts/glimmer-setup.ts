@@ -18,7 +18,7 @@ const _cyan = (s: string) => color(s, 36);
 const OLLAMA_HOST = (
   process.env.OLLAMA_HOST ?? "http://localhost:11434"
 ).replace(/\/$/, "");
-const GLIMMER_MODEL = process.env.GLIMMER_MODEL ?? "glimmer:8b-instruct-q4_K_M";
+const GLIMMER_MODEL = process.env.GLIMMER_MODEL ?? "muse-glimmer";
 const FALLBACK_MODEL = process.env.FALLBACK_MODEL ?? "llama3.1:8b";
 
 async function checkOllama(): Promise<boolean> {

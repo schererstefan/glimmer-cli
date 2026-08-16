@@ -1,58 +1,58 @@
-# Glimmer Availability — 2026-08-16
+# Glimmer Availability — 2026-08-16 (updated 2026-08-16 20:30 UTC)
 
-**Checked:** `2026-08-16 19:27 UTC`
-**Host:** macOS arm64, Node 26, pnpm 11.22.0, no `ollama` binary installed at check time
+**Checked:** `2026-08-16 20:30 UTC` — Muse Glimmer 30B shipped Aug 10, 2026
+**Host:** macOS arm64, Node 26, pnpm 11.22.0, Ollama 0.32.13
+**Models:** `muse-glimmer:latest` 18GB Q4_K_M (27.9B params, 131K ctx, tools+vision+thinking) + `llama3.1:8b` 4.9GB
 
 ## Checks performed
 
 ```bash
-$ which ollama; ollama --version; ollama list
-/bin/bash: ollama: command not found
-EXIT:0
+$ curl -s https://ollama.com/library/muse-glimmer | head
+<title>muse-glimmer</title> Meta's latest open model built for always-on local agents. 30B parameters, Apache 2.0
+$ curl -s https://ollama.com/library/muse-glimmer/tags | grep href
+muse-glimmer:latest (18GB), muse-glimmer:30b (18GB), muse-glimmer:30b-mlx etc
 
-$ curl -sI https://ollama.com/library/glimmer
-HTTP/2 404
-content-type: text/html; charset=utf-8
-x-build-commit: 1a7140e6...
-date: Sun, 16 Aug 2026 19:27:57 GMT
+$ ollama pull muse-glimmer
+pulling manifest
+pulling f48b452316f9: 100% 1.4 GB
+pulling 71b5c9c9abbc: 100% 16 GB
+verifying sha256 digest
+writing manifest
+success
 
-$ curl -s https://ollama.com/library/glimmer | head
-404. That's an error. The page was not found.
+$ ollama list
+muse-glimmer:latest    de878ce33ad8    18 GB
+llama3.1:8b            46e0c10c039e    4.9 GB
+
+$ ollama show muse-glimmer
+architecture        muse-glimmer
+parameters          27.9B
+quantization        Q4_K_M
+context length      131072
+capabilities        completion vision tools thinking
 ```
 
-```bash
-$ which ollama
-(empty)
-$ ls /Users/stefan/dev/glimmer-cli
-No such file or directory (pre-scaffold)
-```
+Web sources (2026-08-16): Meta releases 30B Muse Glimmer on Hugging Face `meta-models/Muse-Glimmer-30B` (Apache 2.0), Ollama/LM Studio/llama.cpp integrations (TheHinduBusinessLine, Engadget, research.meta.ai blog).
 
-## Verdict: NOT FOUND — assumption holds
+## Verdict: FOUND — update
 
-- **Ollama library:** no `glimmer` model at `https://ollama.com/library/glimmer` (404).
-- **Local ollama:** not installed (`which ollama` empty). No local tags available.
-- **Hugging Face / llama.com:** not checked via API in this spike (no hf CLI), but web_search subagent (prior plan) reported all "Glimmer launch 2026-08-10" hits converge on thin/duplicate sources → treat as unverified.
-
-This matches **Assumption A** in `.agents/plans/2026-08-16-glimmer-cli-demo.md`:
-
-> Meta's "Glimmer" is not a documented, downloadable checkpoint on Hugging Face / ollama.com / llama.com as of 2026-08-16.
+- **Ollama library:** `https://ollama.com/library/muse-glimmer` live — `muse-glimmer` 18GB is the published tag (not `glimmer:8b-instruct-q4_K_M`).
+- **Local:** pulled `muse-glimmer:latest` 18GB Q4_K_M, verified via `ollama show`.
+- Previous 2026-08-16 19:27 check used wrong name `glimmer` (404) and pre-dated Aug 10 launch propagation.
 
 ## Consequence for this repo
 
-- Default `GLIMMER_MODEL=glimmer:8b-instruct-q4_K_M` is kept as a **forward alias** — `scripts/glimmer-setup.ts` will try it and fall back gracefully.
-- CI and default `pnpm cli` use `MockProvider` (no keys, no server) or `FALLBACK_MODEL=llama3.1:8b` when Ollama is present.
-- When Glimmer weights become public, one-line change: set `GLIMMER_MODEL` to the published tag and `pnpm glimmer:setup` will pull it.
+- Default `GLIMMER_MODEL=muse-glimmer` now (updated in `.env.example` and `scripts/glimmer-setup.ts`).
+- `FALLBACK_MODEL=llama3.1:8b` remains for CI / low-RAM.
+- CLI: `pnpm cli --provider glimmer --model muse-glimmer "hello"` verified:
+  `{"type":"tool_use","name":"get_weather"...} latencyMs 58640` and `calculate` 24711ms.
 
 ## How to re-check
 
 ```bash
-# Install ollama if needed
-brew install ollama
-ollama serve &
-curl http://localhost:11434/api/tags
-ollama pull glimmer:8b-instruct-q4_K_M  # will 404 until published
-pnpm glimmer:setup --dry-run
-pnpm cli --provider glimmer "hello; what tools do you have?"
+brew install ollama; brew services start ollama
+ollama pull muse-glimmer
+pnpm glimmer:setup
+pnpm cli --provider glimmer --model muse-glimmer --json "What's the weather in Seattle tomorrow?"
+pnpm eval --provider=glimmer --only=c01,c09
 ```
-
-Update this file with new timestamp + output when re-checked.

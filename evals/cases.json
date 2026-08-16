@@ -1,0 +1,334 @@
+[
+  {
+    "id": "c01",
+    "category": "single",
+    "prompt": "What's the weather in Seattle tomorrow?",
+    "expected": { "tool": "get_weather", "args": { "location": "Seattle" } },
+    "must_include": ["Seattle"]
+  },
+  {
+    "id": "c02",
+    "category": "single",
+    "prompt": "What's the weather in San Francisco on 2026-08-17?",
+    "expected": {
+      "tool": "get_weather",
+      "args": { "location": "San Francisco", "date": "2026-08-17" }
+    },
+    "must_include": ["San Francisco"]
+  },
+  {
+    "id": "c03",
+    "category": "single",
+    "prompt": "Search my calendar for meetings between 2026-08-17 and 2026-08-20",
+    "expected": { "tool": "search_calendar", "args": { "query": "meeting" } },
+    "must_include": ["meeting"]
+  },
+  {
+    "id": "c04",
+    "category": "single",
+    "prompt": "Book a meeting titled 'Team Sync' for 2026-08-17T10:00:00Z for 30 minutes with alice@example.com",
+    "expected": { "tool": "book_meeting", "args": { "title": "Team Sync" } },
+    "must_include": ["Team Sync"]
+  },
+  {
+    "id": "c05",
+    "category": "single",
+    "prompt": "Please read the file /tmp/notes.txt",
+    "expected": { "tool": "read_file", "args": { "path": "/tmp/notes.txt" } },
+    "must_include": ["/tmp/notes.txt"]
+  },
+  {
+    "id": "c06",
+    "category": "single",
+    "prompt": "Execute this Python code: print(42)",
+    "expected": {
+      "tool": "code_exec",
+      "args": { "language": "python", "code": "print(42)" }
+    },
+    "must_include": ["print(42)"]
+  },
+  {
+    "id": "c07",
+    "category": "single",
+    "prompt": "Search the web for 'Glimmer model launch'",
+    "expected": { "tool": "web_search", "args": { "query": "Glimmer" } },
+    "must_include": ["Glimmer"]
+  },
+  {
+    "id": "c08",
+    "category": "single",
+    "prompt": "Send an email to bob@example.com with subject 'Hello' and body 'Hi Bob, how are you?'",
+    "expected": { "tool": "send_email", "args": { "to": "bob@example.com" } },
+    "must_include": ["bob@example.com"]
+  },
+  {
+    "id": "c09",
+    "category": "single",
+    "prompt": "Calculate 42*19",
+    "expected": { "tool": "calculate", "args": { "expression": "42*19" } },
+    "must_include": ["42*19"]
+  },
+  {
+    "id": "c10",
+    "category": "single",
+    "prompt": "Translate 'hello' to Spanish",
+    "expected": {
+      "tool": "translate_text",
+      "args": { "text": "hello", "target_lang": "es" }
+    },
+    "must_include": ["hello", "es"]
+  },
+  {
+    "id": "c11",
+    "category": "single",
+    "prompt": "Look up contacts for Alice",
+    "expected": { "tool": "lookup_contacts", "args": { "query": "Alice" } },
+    "must_include": ["Alice"]
+  },
+  {
+    "id": "c12",
+    "category": "single",
+    "prompt": "Summarize the doc at /docs/report.md",
+    "expected": {
+      "tool": "summarize_doc",
+      "args": { "path": "/docs/report.md" }
+    },
+    "must_include": ["/docs/report.md"]
+  },
+  {
+    "id": "c13",
+    "category": "single",
+    "prompt": "What's the weather in London on 2026-08-19?",
+    "expected": { "tool": "get_weather", "args": { "location": "London" } },
+    "must_include": ["London"]
+  },
+  {
+    "id": "c14",
+    "category": "single",
+    "prompt": "Search the calendar for dentist appointments from 2026-08-17 to 2026-08-25",
+    "expected": { "tool": "search_calendar", "args": { "query": "dentist" } },
+    "must_include": ["dentist"]
+  },
+  {
+    "id": "c15",
+    "category": "single",
+    "prompt": "Book a meeting for project review on 2026-08-18T14:00:00Z with bob@example.com and carol@example.com",
+    "expected": {
+      "tool": "book_meeting",
+      "args": { "title": "project review" }
+    },
+    "must_include": ["project review"]
+  },
+  {
+    "id": "c16",
+    "category": "single",
+    "prompt": "Read file /docs/readme.md",
+    "expected": { "tool": "read_file", "args": { "path": "/docs/readme.md" } },
+    "must_include": ["/docs/readme.md"]
+  },
+  {
+    "id": "c17",
+    "category": "single",
+    "prompt": "Run this JavaScript: console.log(42)",
+    "expected": { "tool": "code_exec", "args": { "language": "js" } },
+    "must_include": ["console.log"]
+  },
+  {
+    "id": "c18",
+    "category": "single",
+    "prompt": "Search the web for quantum computing breakthroughs",
+    "expected": {
+      "tool": "web_search",
+      "args": { "query": "quantum computing" }
+    },
+    "must_include": ["quantum computing"]
+  },
+  {
+    "id": "c19",
+    "category": "single",
+    "prompt": "Calculate sqrt(16)",
+    "expected": { "tool": "calculate", "args": { "expression": "sqrt(16)" } },
+    "must_include": ["sqrt(16)"]
+  },
+  {
+    "id": "c20",
+    "category": "single",
+    "prompt": "Translate 'good morning' to French",
+    "expected": { "tool": "translate_text", "args": { "target_lang": "fr" } },
+    "must_include": ["good morning"]
+  },
+  {
+    "id": "c21",
+    "category": "parallel",
+    "prompt": "Plan my trip to San Francisco from 2026-08-17 to 2026-08-20",
+    "expected": { "tools": ["get_weather", "search_calendar"] },
+    "must_include": ["San Francisco", "2026-08-17"]
+  },
+  {
+    "id": "c22",
+    "category": "parallel",
+    "prompt": "Plan a trip to Tokyo from 2026-08-20 to 2026-08-25 with Alice",
+    "expected": { "tool": "plan_trip", "args": { "destination": "Tokyo" } },
+    "must_include": ["Tokyo"]
+  },
+  {
+    "id": "c23",
+    "category": "multi",
+    "prompt": "Read /docs/report.md and then summarize it",
+    "expected": { "tool": "read_file", "args": { "path": "/docs/report.md" } },
+    "must_include": ["/docs/report.md"]
+  },
+  {
+    "id": "c24",
+    "category": "multi",
+    "prompt": "Look up Alice's contact and then send her an email about tomorrow's meeting",
+    "history": [{ "role": "user", "content": "Look up contacts for Alice" }],
+    "expected": { "tool": "lookup_contacts", "args": { "query": "Alice" } },
+    "must_include": ["Alice"]
+  },
+  {
+    "id": "c25",
+    "category": "multi",
+    "prompt": "What is 15*24? Then translate the answer to Spanish",
+    "expected": { "tool": "calculate", "args": { "expression": "15*24" } },
+    "must_include": ["15*24"]
+  },
+  {
+    "id": "c26",
+    "category": "multi",
+    "prompt": "Search the web for Glimmer and then summarize the doc at /docs/readme.md",
+    "expected": { "tool": "web_search", "args": { "query": "Glimmer" } },
+    "must_include": ["Glimmer"]
+  },
+  {
+    "id": "c27",
+    "category": "multi",
+    "prompt": "Check my calendar for 2026-08-17 to 2026-08-20 and then book a meeting if I'm free at 10am",
+    "expected": {
+      "tool": "search_calendar",
+      "args": { "date_from": "2026-08-17" }
+    },
+    "must_include": ["2026-08-17"]
+  },
+  {
+    "id": "c28",
+    "category": "multi",
+    "prompt": "Read /tmp/todo.txt",
+    "expected": { "tool": "read_file", "args": { "path": "/tmp/todo.txt" } },
+    "must_include": ["/tmp/todo.txt"]
+  },
+  {
+    "id": "c29",
+    "category": "multi",
+    "prompt": "Calculate 100/4 and send the result to alice@example.com",
+    "expected": { "tool": "calculate", "args": { "expression": "100/4" } },
+    "must_include": ["100/4"]
+  },
+  {
+    "id": "c30",
+    "category": "multi",
+    "prompt": "Plan my trip to Seattle from 2026-08-22 to 2026-08-24",
+    "expected": { "tool": "plan_trip", "args": { "destination": "Seattle" } },
+    "must_include": ["Seattle", "2026-08-22"]
+  },
+  {
+    "id": "c31",
+    "category": "negative",
+    "prompt": "Hello, how are you?",
+    "expected": { "tool": null },
+    "must_not_include": ["get_weather", "search_calendar"]
+  },
+  {
+    "id": "c32",
+    "category": "negative",
+    "prompt": "Tell me a joke",
+    "expected": { "tool": null },
+    "must_not_include": ["book_meeting"]
+  },
+  {
+    "id": "c33",
+    "category": "negative",
+    "prompt": "What is the meaning of life?",
+    "expected": { "tool": null }
+  },
+  {
+    "id": "c34",
+    "category": "negative",
+    "prompt": "Thanks, that's all I needed!",
+    "expected": { "tool": null }
+  },
+  {
+    "id": "c35",
+    "category": "edge",
+    "prompt": "Send an email without specifying recipient",
+    "expected": { "tool": "send_email" },
+    "must_include": ["send_email"]
+  },
+  {
+    "id": "c36",
+    "category": "edge",
+    "prompt": "Read file /nonexistent/path.txt",
+    "expected": {
+      "tool": "read_file",
+      "args": { "path": "/nonexistent/path.txt" }
+    },
+    "must_include": ["/nonexistent/path.txt"]
+  },
+  {
+    "id": "c37",
+    "category": "edge",
+    "prompt": "Calculate",
+    "expected": { "tool": "calculate" }
+  },
+  {
+    "id": "c38",
+    "category": "edge",
+    "prompt": "Book a meeting",
+    "expected": { "tool": "book_meeting" }
+  },
+  {
+    "id": "c39",
+    "category": "edge",
+    "prompt": "Translate hello",
+    "expected": { "tool": "translate_text" }
+  },
+  {
+    "id": "c40",
+    "category": "edge",
+    "prompt": "Search for something",
+    "expected": { "tool": "web_search" }
+  },
+  {
+    "id": "c41",
+    "category": "factual",
+    "prompt": "What is the capital of France?",
+    "expected": { "tool": null, "answer_contains": "Paris" },
+    "must_include": ["Paris"]
+  },
+  {
+    "id": "c42",
+    "category": "factual",
+    "prompt": "Who wrote 'Pride and Prejudice'?",
+    "expected": { "tool": null, "answer_contains": "Jane Austen" },
+    "must_include": ["Jane Austen"]
+  },
+  {
+    "id": "c43",
+    "category": "factual",
+    "prompt": "What is 2+2?",
+    "expected": { "tool": "calculate", "args": { "expression": "2+2" } },
+    "must_include": ["4"]
+  },
+  {
+    "id": "c44",
+    "category": "factual",
+    "prompt": "Explain what Glimmer is in one sentence without tools",
+    "expected": { "tool": null }
+  },
+  {
+    "id": "c45",
+    "category": "factual",
+    "prompt": "Summarize the benefits of the Glimmer CLI harness",
+    "expected": { "tool": null }
+  }
+]

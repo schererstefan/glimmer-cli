@@ -1,0 +1,80 @@
+# Glimmer vs Muse Spark 1.2 — Eval Report
+
+**Generated:** 2026-08-16T19:39:25.880Z
+
+| Metric | mock (mock-glimmer-v1) | Delta |
+|---|---|---|
+| Total cases | 45 |  |
+| PASS | 45 |  |
+| PARTIAL | 0 |  |
+| FAIL | 0 |  |
+| Tool-selection F1 | 1.000 |  |
+| Precision | 1.000 |  |
+| Recall | 1.000 |  |
+| Arg correctness (exact) | 1.000 |  |
+| Multi-turn success | 1.000 |  |
+| Negative correct | 1.000 |  |
+| Avg latency | 0ms |  |
+| p50 | 0ms |  |
+| p95 | 1ms |  |
+| Cost total (USD) | $0.0000 |  |
+
+## Per-provider breakdown
+
+### mock (mock-glimmer-v1)
+
+| ID | Category | Expected | Actual | Verdict | Latency |
+|---|---|---|---|---|---|
+| c01 | single | get_weather | get_weather | PASS | 1ms |
+| c02 | single | get_weather | get_weather | PASS | 0ms |
+| c03 | single | search_calendar | search_calendar | PASS | 0ms |
+| c04 | single | book_meeting | book_meeting | PASS | 0ms |
+| c05 | single | read_file | read_file | PASS | 0ms |
+| c06 | single | code_exec | code_exec | PASS | 1ms |
+| c07 | single | web_search | web_search | PASS | 0ms |
+| c08 | single | send_email | send_email | PASS | 0ms |
+| c09 | single | calculate | calculate | PASS | 0ms |
+| c10 | single | translate_text | translate_text | PASS | 0ms |
+| c11 | single | lookup_contacts | lookup_contacts | PASS | 0ms |
+| c12 | single | summarize_doc | summarize_doc | PASS | 0ms |
+| c13 | single | get_weather | get_weather | PASS | 0ms |
+| c14 | single | search_calendar | search_calendar | PASS | 0ms |
+| c15 | single | book_meeting | book_meeting | PASS | 0ms |
+| c16 | single | read_file | read_file | PASS | 0ms |
+| c17 | single | code_exec | code_exec | PASS | 0ms |
+| c18 | single | web_search | web_search | PASS | 0ms |
+| c19 | single | calculate | calculate | PASS | 0ms |
+| c20 | single | translate_text | translate_text | PASS | 0ms |
+| c21 | parallel | get_weather,search_calendar | get_weather,search_calendar | PASS | 0ms |
+| c22 | parallel | plan_trip | plan_trip | PASS | 0ms |
+| c23 | multi | read_file | read_file | PASS | 0ms |
+| c24 | multi | lookup_contacts | lookup_contacts | PASS | 0ms |
+| c25 | multi | calculate | calculate | PASS | 0ms |
+| c26 | multi | web_search | web_search | PASS | 0ms |
+| c27 | multi | search_calendar | search_calendar | PASS | 0ms |
+| c28 | multi | read_file | read_file | PASS | 0ms |
+| c29 | multi | calculate | calculate | PASS | 1ms |
+| c30 | multi | plan_trip | plan_trip | PASS | 0ms |
+| c31 | negative | none | none | PASS | 0ms |
+| c32 | negative | none | none | PASS | 0ms |
+| c33 | negative | none | none | PASS | 0ms |
+| c34 | negative | none | none | PASS | 0ms |
+| c35 | edge | send_email | send_email | PASS | 0ms |
+| c36 | edge | read_file | read_file | PASS | 0ms |
+| c37 | edge | calculate | calculate | PASS | 0ms |
+| c38 | edge | book_meeting | book_meeting | PASS | 0ms |
+| c39 | edge | translate_text | translate_text | PASS | 0ms |
+| c40 | edge | web_search | web_search | PASS | 0ms |
+| c41 | factual | none | none | PASS | 0ms |
+| c42 | factual | none | none | PASS | 0ms |
+| c43 | factual | calculate | calculate | PASS | 0ms |
+| c44 | factual | none | none | PASS | 0ms |
+| c45 | factual | none | none | PASS | 0ms |
+
+
+---
+
+*Notes:*
+- Glimmer local is via Ollama (`OLLAMA_HOST`, `GLIMMER_MODEL`). When weights are gated, harness falls back to `FALLBACK_MODEL` (default `llama3.1:8b`) and records it as `mock-glimmer-v1`.
+- Spark is via `MUSE_SPARK_BASE_URL` + `MUSE_SPARK_API_KEY`; mock provider is used for CI (no spend).
+- Arg correctness is exact match on required keys (case-insensitive for strings where applicable).

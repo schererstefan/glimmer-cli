@@ -169,6 +169,50 @@ describe("handlers", () => {
     expect((r.result as { error: string }).error).toBeDefined();
   });
 
+  it("calculate supports functions, constants, and operators", async () => {
+    const cases: Array<[string, number]> = [
+      ["sqrt(16) + abs(-2)", 6],
+      ["min(3, 1, 2) + max(3, 1, 2)", 4],
+      ["floor(3.7) + ceil(3.2) + round(3.5)", 11],
+      ["2^3 + 10 % 3", 9],
+      ["(1 + 2) * 3 - 4 / 2", 7],
+      ["pi", Math.PI],
+      ["e", Math.E],
+    ];
+    for (const [expression, value] of cases) {
+      expect((await runTool("calculate", { expression })).result).toMatchObject(
+        { value },
+      );
+    }
+  });
+
+  it("calculate rejects code-execution payloads", async () => {
+    const payloads = [
+      'sqrt(1)+({}).constructor.constructor("return 41")()',
+      "sqrt(1) + process.cwd().length",
+      "sqrt(1), 42",
+      "sqrt(1, 2)",
+      "sqrt(constructor)",
+      "process.cwd()",
+      "sqrt(1) + globalThis.process",
+    ];
+    for (const expression of payloads) {
+      const r = await runTool("calculate", { expression });
+      expect(
+        (r.result as { error?: string }).error,
+        `payload should error: ${expression}`,
+      ).toBeDefined();
+      expect((r.result as { value?: number }).value).toBeUndefined();
+    }
+  });
+
+  it("runTool rejects missing required fields before dispatch", async () => {
+    const r = await runTool("calculate", {});
+    expect((r.result as { error: string }).error).toMatch(/expression/);
+    const w = await runTool("get_weather", { location: "Seattle" });
+    expect((w.result as { error: string }).error).toMatch(/date/);
+  });
+
   it("translate_text deterministic", async () => {
     const es = await runTool("translate_text", {
       text: "hello",

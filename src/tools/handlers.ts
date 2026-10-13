@@ -63,26 +63,167 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
   },
 };
 
+// Self-contained arithmetic evaluator (recursive descent). Supports
+// numbers, + - * / % and ^ / **, parentheses, unary +/-, the functions
+// sqrt/abs/floor/ceil/round/min/max and the constants pi/e.
+// Anything outside that grammar is a parse error — never executed as code.
+const CALC_FUNCTIONS: Record<string, (args: number[]) => number> = {
+  sqrt: (args) => {
+    if (args.length !== 1) throw new Error("sqrt expects exactly 1 argument");
+    return Math.sqrt(args[0]);
+  },
+  abs: (args) => {
+    if (args.length !== 1) throw new Error("abs expects exactly 1 argument");
+    return Math.abs(args[0]);
+  },
+  floor: (args) => {
+    if (args.length !== 1) throw new Error("floor expects exactly 1 argument");
+    return Math.floor(args[0]);
+  },
+  ceil: (args) => {
+    if (args.length !== 1) throw new Error("ceil expects exactly 1 argument");
+    return Math.ceil(args[0]);
+  },
+  round: (args) => {
+    if (args.length !== 1) throw new Error("round expects exactly 1 argument");
+    return Math.round(args[0]);
+  },
+  min: (args) => {
+    if (args.length < 1) throw new Error("min expects at least 1 argument");
+    return Math.min(...args);
+  },
+  max: (args) => {
+    if (args.length < 1) throw new Error("max expects at least 1 argument");
+    return Math.max(...args);
+  },
+};
+
 function safeEval(expr: string): number {
-  // Only allow digits, + - * / ( ) . and whitespace plus sqrt
-  const sanitized = expr.trim().toLowerCase();
-  if (
-    /[^0-9+\-*/().\s]|sqrt/.test(sanitized.replace(/sqrt/g, "")) &&
-    !sanitized.includes("sqrt")
-  ) {
-    // If contains illegal chars not part of sqrt, throw
-    if (/[^0-9+\-*/().\s]/.test(sanitized.replace(/sqrt/g, ""))) {
-      throw new Error("invalid characters in expression");
+  const src = expr;
+  let pos = 0;
+
+  function fail(msg: string): never {
+    throw new Error(msg);
+  }
+
+  function skipWs(): void {
+    while (pos < src.length && /\s/.test(src.charAt(pos))) pos++;
+  }
+
+  function parseExpression(): number {
+    let value = parseTerm();
+    for (;;) {
+      skipWs();
+      const c = src.charAt(pos);
+      if (c !== "+" && c !== "-") return value;
+      pos++;
+      const rhs = parseTerm();
+      value = c === "+" ? value + rhs : value - rhs;
     }
   }
-  // Handle sqrt(N) -> Math.sqrt(N)
-  const js = sanitized.replace(/sqrt\s*\(\s*([^)]+)\s*\)/g, "Math.sqrt($1)");
-  // eslint-disable-next-line no-new-func
-  const fn = new Function(`return (${js});`);
-  const val = fn() as unknown;
-  if (typeof val !== "number" || !Number.isFinite(val))
-    throw new Error("expression did not evaluate to finite number");
-  return val;
+
+  function parseTerm(): number {
+    let value = parseUnary();
+    for (;;) {
+      skipWs();
+      const c = src.charAt(pos);
+      if (c !== "*" && c !== "/" && c !== "%") return value;
+      if (c === "*" && src.charAt(pos + 1) === "*")
+        fail(`Unexpected operator '**' at position ${pos}`);
+      pos++;
+      const rhs = parseUnary();
+      if (c === "*") value *= rhs;
+      else if (c === "/") value /= rhs;
+      else value %= rhs;
+    }
+  }
+
+  // Unary binds looser than exponent: -2^2 === -(2^2).
+  function parseUnary(): number {
+    skipWs();
+    const c = src.charAt(pos);
+    if (c === "+") {
+      pos++;
+      return parseUnary();
+    }
+    if (c === "-") {
+      pos++;
+      return -parseUnary();
+    }
+    return parsePower();
+  }
+
+  // Exponent is right-associative: 2^3^2 === 2^(3^2).
+  function parsePower(): number {
+    const base = parsePrimary();
+    skipWs();
+    let op: string | null = null;
+    if (src.startsWith("**", pos)) op = "**";
+    else if (src.charAt(pos) === "^") op = "^";
+    if (op === null) return base;
+    pos += op.length;
+    return base ** parseUnary();
+  }
+
+  function parsePrimary(): number {
+    skipWs();
+    if (src.charAt(pos) === "(") {
+      pos++;
+      const value = parseExpression();
+      skipWs();
+      if (src.charAt(pos) !== ")") fail(`Expected ')' at position ${pos}`);
+      pos++;
+      return value;
+    }
+    const num = /^(\d+(\.\d*)?|\.\d+)/.exec(src.slice(pos));
+    if (num) {
+      pos += num[0].length;
+      return Number(num[0]);
+    }
+    const ident = /^[A-Za-z]+/.exec(src.slice(pos));
+    if (ident) {
+      const name = ident[0].toLowerCase();
+      pos += ident[0].length;
+      if (name === "pi") return Math.PI;
+      if (name === "e") return Math.E;
+      const fn = CALC_FUNCTIONS[name];
+      if (!fn)
+        fail(
+          `Unknown identifier '${ident[0]}' at position ${pos - ident[0].length}`,
+        );
+      skipWs();
+      if (src.charAt(pos) !== "(")
+        fail(`Expected '(' after '${name}' at position ${pos}`);
+      pos++;
+      const args: number[] = [];
+      skipWs();
+      if (src.charAt(pos) !== ")") {
+        for (;;) {
+          args.push(parseExpression());
+          skipWs();
+          if (src.charAt(pos) === ",") {
+            pos++;
+            continue;
+          }
+          break;
+        }
+      }
+      skipWs();
+      if (src.charAt(pos) !== ")") fail(`Expected ')' at position ${pos}`);
+      pos++;
+      return fn(args);
+    }
+    if (pos >= src.length) fail("Unexpected end of expression");
+    fail(`Unexpected character '${src.charAt(pos)}' at position ${pos}`);
+  }
+
+  const value = parseExpression();
+  skipWs();
+  if (pos < src.length)
+    fail(`Unexpected character '${src.charAt(pos)}' at position ${pos}`);
+  if (!Number.isFinite(value))
+    fail("expression did not evaluate to finite number");
+  return value;
 }
 
 export async function handleGetWeather(

@@ -26,6 +26,15 @@ export async function runTool(
   name: string,
   input: Record<string, unknown>,
 ): Promise<ToolResult> {
+  const validation = validateToolInput(name, input);
+  if (!validation.valid) {
+    if (validation.missing.some((m) => m.startsWith("unknown tool"))) {
+      return { result: { error: `Unknown tool: ${name}` } };
+    }
+    return {
+      result: { error: `${name} requires: ${validation.missing.join(", ")}` },
+    };
+  }
   switch (name) {
     case "get_weather":
       return handleGetWeather(input);

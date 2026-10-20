@@ -82,7 +82,7 @@ Examples:
 
 Env:
   OLLAMA_HOST                      Ollama host (default http://localhost:11434)
-  GLIMMER_MODEL                    Glimmer model tag (default glimmer:8b-instruct-q4_K_M)
+  GLIMMER_MODEL                    Glimmer model tag (default muse-glimmer)
   FALLBACK_MODEL                   Fallback when Glimmer not available (default llama3.1:8b)
   MUSE_SPARK_API_KEY               Spark API key
   MUSE_SPARK_BASE_URL              Spark base URL

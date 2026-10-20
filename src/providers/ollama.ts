@@ -72,11 +72,7 @@ export class OllamaProvider implements ModelProvider {
       process.env.OLLAMA_HOST ??
       "http://localhost:11434"
     ).replace(/\/$/, "");
-    this.model =
-      opts?.model ??
-      process.env.GLIMMER_MODEL ??
-      process.env.FALLBACK_MODEL ??
-      "llama3.1:8b";
+    this.model = opts?.model ?? process.env.GLIMMER_MODEL ?? "muse-glimmer";
   }
 
   async *chat(options: ChatOptions): AsyncIterable<Delta> {

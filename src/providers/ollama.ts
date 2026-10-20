@@ -65,14 +65,19 @@ export class OllamaProvider implements ModelProvider {
   readonly id = "glimmer";
   readonly model: string;
   readonly host: string;
+  readonly timeoutMs: number;
 
-  constructor(opts?: { model?: string; host?: string }) {
+  constructor(opts?: { model?: string; host?: string; timeoutMs?: number }) {
     this.host = (
       opts?.host ??
       process.env.OLLAMA_HOST ??
       "http://localhost:11434"
     ).replace(/\/$/, "");
     this.model = opts?.model ?? process.env.GLIMMER_MODEL ?? "muse-glimmer";
+    const envTimeout = Number(process.env.GLIMMER_TIMEOUT_MS);
+    this.timeoutMs =
+      opts?.timeoutMs ??
+      (Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 120_000);
   }
 
   async *chat(options: ChatOptions): AsyncIterable<Delta> {
@@ -96,6 +101,7 @@ export class OllamaProvider implements ModelProvider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
       yield {
@@ -204,6 +210,12 @@ export class OllamaProvider implements ModelProvider {
         yield { type: "tool_use", toolCall: tc } as Delta;
       }
       yield { type: "done", reason: doneReason } as Delta;
+    } catch (err) {
+      yield {
+        type: "text",
+        text: `[ollama stream error: ${err instanceof Error ? err.message : String(err)}]`,
+      } as Delta;
+      yield { type: "done", reason: "error" } as unknown as Delta;
     } finally {
       reader.releaseLock();
     }
@@ -230,6 +242,7 @@ export class OllamaProvider implements ModelProvider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
       yield {
@@ -306,6 +319,12 @@ export class OllamaProvider implements ModelProvider {
         }
       }
       yield { type: "done", reason: "stop" } as Delta;
+    } catch (err) {
+      yield {
+        type: "text",
+        text: `[ollama openai stream error: ${err instanceof Error ? err.message : String(err)}]`,
+      } as Delta;
+      yield { type: "done", reason: "error" } as unknown as Delta;
     } finally {
       reader.releaseLock();
     }

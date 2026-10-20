@@ -38,8 +38,14 @@ export class MuseSparkProvider implements ModelProvider {
   readonly model: string;
   readonly baseUrl: string;
   readonly apiKey?: string;
+  readonly timeoutMs: number;
 
-  constructor(opts?: { model?: string; baseUrl?: string; apiKey?: string }) {
+  constructor(opts?: {
+    model?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    timeoutMs?: number;
+  }) {
     this.model =
       opts?.model ?? process.env.MUSE_SPARK_MODEL ?? "muse-spark-1.2";
     this.baseUrl = (
@@ -48,6 +54,10 @@ export class MuseSparkProvider implements ModelProvider {
       "https://api.muse-spark.example/v1"
     ).replace(/\/$/, "");
     this.apiKey = opts?.apiKey ?? process.env.MUSE_SPARK_API_KEY;
+    const envTimeout = Number(process.env.MUSE_SPARK_TIMEOUT_MS);
+    this.timeoutMs =
+      opts?.timeoutMs ??
+      (Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 120_000);
   }
 
   hasCredentials(): boolean {
@@ -110,6 +120,7 @@ export class MuseSparkProvider implements ModelProvider {
           Authorization: `Bearer ${this.apiKey}`,
         },
         body,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
       yield {
@@ -204,6 +215,12 @@ export class MuseSparkProvider implements ModelProvider {
       }
       const reason = toolCallsById.size > 0 ? "tool_use" : "stop";
       yield { type: "done", reason } as Delta;
+    } catch (err) {
+      yield {
+        type: "text",
+        text: `[spark stream error: ${err instanceof Error ? err.message : String(err)}]`,
+      } as Delta;
+      yield { type: "done", reason: "error" } as unknown as Delta;
     } finally {
       reader.releaseLock();
     }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockProvider } from "@/src/providers/mock";
 import { MuseSparkProvider } from "@/src/providers/muse-spark";
 import { OllamaProvider } from "@/src/providers/ollama";
@@ -165,6 +165,39 @@ describe("OllamaProvider", () => {
     expect(p.model).toBe("glimmer:test");
     if (prev === undefined) delete process.env.GLIMMER_MODEL;
     else process.env.GLIMMER_MODEL = prev;
+  });
+
+  describe("default model resolution", () => {
+    let savedGlimmerModel: string | undefined;
+    let savedFallbackModel: string | undefined;
+
+    beforeEach(() => {
+      savedGlimmerModel = process.env.GLIMMER_MODEL;
+      savedFallbackModel = process.env.FALLBACK_MODEL;
+      delete process.env.GLIMMER_MODEL;
+      delete process.env.FALLBACK_MODEL;
+    });
+
+    afterEach(() => {
+      if (savedGlimmerModel === undefined) delete process.env.GLIMMER_MODEL;
+      else process.env.GLIMMER_MODEL = savedGlimmerModel;
+      if (savedFallbackModel === undefined) delete process.env.FALLBACK_MODEL;
+      else process.env.FALLBACK_MODEL = savedFallbackModel;
+    });
+
+    it("defaults to muse-glimmer when no model env is set", () => {
+      expect(new OllamaProvider().model).toBe("muse-glimmer");
+    });
+
+    it("ignores FALLBACK_MODEL so it cannot masquerade as the primary", () => {
+      process.env.FALLBACK_MODEL = "llama3.1:8b";
+      expect(new OllamaProvider().model).toBe("muse-glimmer");
+    });
+
+    it("lets GLIMMER_MODEL win over the muse-glimmer default", () => {
+      process.env.GLIMMER_MODEL = "glimmer:custom";
+      expect(new OllamaProvider().model).toBe("glimmer:custom");
+    });
   });
 });
 

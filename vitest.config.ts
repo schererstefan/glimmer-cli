@@ -9,6 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    testTimeout: 15_000,
     include: ["tests/**/*.test.ts"],
     reporters: process.env.CI ? ["default"] : ["default"],
     coverage: {

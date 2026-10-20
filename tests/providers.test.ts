@@ -1,8 +1,81 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MockProvider } from "@/src/providers/mock";
 import { MuseSparkProvider } from "@/src/providers/muse-spark";
 import { OllamaProvider } from "@/src/providers/ollama";
+import type { Delta } from "@/src/providers/types";
 import { tools } from "@/src/tools/catalog";
+
+const ENV_KEYS = [
+  "GLIMMER_TIMEOUT_MS",
+  "MUSE_SPARK_TIMEOUT_MS",
+  "GLIMMER_MODEL",
+  "FALLBACK_MODEL",
+  "OLLAMA_HOST",
+  "MUSE_SPARK_MODEL",
+  "MUSE_SPARK_BASE_URL",
+  "MUSE_SPARK_API_KEY",
+] as const;
+
+const savedEnv = new Map<string, string | undefined>(
+  ENV_KEYS.map((key) => [key, process.env[key]]),
+);
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  for (const key of ENV_KEYS) {
+    const value = savedEnv.get(key);
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
+
+function neverResolvingFetch() {
+  return vi.fn(
+    (_input: string | URL | Request, init?: RequestInit): Promise<Response> =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return;
+        if (signal.aborted) {
+          reject(
+            signal.reason ??
+              new DOMException("The operation timed out.", "TimeoutError"),
+          );
+          return;
+        }
+        signal.addEventListener("abort", () => {
+          reject(
+            signal.reason ??
+              new DOMException("The operation timed out.", "TimeoutError"),
+          );
+        });
+      }),
+  );
+}
+
+async function collectDeltas(iterable: AsyncIterable<Delta>): Promise<Delta[]> {
+  const deltas: Delta[] = [];
+  for await (const delta of iterable) deltas.push(delta);
+  return deltas;
+}
+
+function textOf(deltas: Delta[]): string {
+  return deltas
+    .filter((d) => d.type === "text")
+    .map((d) => (d as { text: string }).text)
+    .join("");
+}
+
+function streamResponse(bodyText: string, status = 200): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(bodyText));
+      controller.close();
+    },
+  });
+  return new Response(body, { status });
+}
 
 describe("MockProvider", () => {
   it("has id mock and default model", () => {
@@ -126,5 +199,142 @@ describe("MuseSparkProvider", () => {
     }))
       chunks.push(d);
     expect(chunks.length).toBeGreaterThan(0);
+  });
+});
+
+describe("providers with stubbed fetch", () => {
+  it("Ollama timeout: never-resolving fetch ends with done error", async () => {
+    const fetchStub = neverResolvingFetch();
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new OllamaProvider({
+      host: "http://localhost:11434",
+      model: "llama3.1:8b",
+      timeoutMs: 20,
+    });
+    expect(p.timeoutMs).toBe(20);
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "hello" }],
+        tools,
+      }),
+    );
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+    expect(fetchStub.mock.calls[0]?.[1]?.signal).toBeDefined();
+    expect(fetchStub.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "error" });
+  });
+
+  it("MuseSpark timeout: never-resolving fetch ends with done error", async () => {
+    const fetchStub = neverResolvingFetch();
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new MuseSparkProvider({
+      apiKey: "sk-test",
+      baseUrl: "https://api.muse-spark.live/v1",
+      timeoutMs: 20,
+    });
+    expect(p.hasCredentials()).toBe(true);
+    expect(p.timeoutMs).toBe(20);
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "hello" }],
+        tools,
+      }),
+    );
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+    expect(fetchStub.mock.calls[0]?.[1]?.signal).toBeDefined();
+    expect(fetchStub.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "error" });
+  });
+
+  it("Ollama streamed chunk + tool call parses", async () => {
+    const line = JSON.stringify({
+      message: {
+        content: "Hi ",
+        tool_calls: [
+          {
+            id: "call_1",
+            function: {
+              name: "get_weather",
+              arguments: { location: "Seattle" },
+            },
+          },
+        ],
+      },
+      done: true,
+    });
+    const fetchStub = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        streamResponse(`${line}\n`),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new OllamaProvider({
+      host: "http://localhost:11434",
+      model: "llama3.1:8b",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "What's the weather in Seattle?" }],
+        tools,
+      }),
+    );
+    expect(textOf(deltas)).toContain("Hi");
+    const toolDelta = deltas.find(
+      (d): d is Extract<Delta, { type: "tool_use" }> => d.type === "tool_use",
+    );
+    expect(toolDelta?.toolCall.name).toBe("get_weather");
+    expect(toolDelta?.toolCall.input.location).toBe("Seattle");
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "tool_use" });
+  });
+
+  it("Ollama 404 falls back to OpenAI compat endpoint", async () => {
+    const fetchStub = vi.fn(
+      async (input: string | URL | Request, _init?: RequestInit) => {
+        if (String(input).includes("/v1/chat/completions")) {
+          return streamResponse(
+            'data: {"choices":[{"delta":{"content":"compat hi"}}]}\n\ndata: [DONE]\n\n',
+          );
+        }
+        return new Response("model not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new OllamaProvider({
+      host: "http://localhost:11434",
+      model: "llama3.1:8b",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "hello" }],
+        tools,
+      }),
+    );
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+    expect(String(fetchStub.mock.calls[1]?.[0])).toContain(
+      "/v1/chat/completions",
+    );
+    expect(textOf(deltas)).toContain("compat hi");
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "stop" });
+  });
+
+  it("MuseSpark streamed chunk parses", async () => {
+    const fetchStub = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        streamResponse(
+          'data: {"choices":[{"delta":{"content":"spark hi"}}]}\n\ndata: [DONE]\n\n',
+        ),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new MuseSparkProvider({
+      apiKey: "sk-test",
+      baseUrl: "https://api.muse-spark.live/v1",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "hello" }],
+        tools,
+      }),
+    );
+    expect(textOf(deltas)).toContain("spark hi");
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "stop" });
   });
 });

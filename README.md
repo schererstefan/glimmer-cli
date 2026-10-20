@@ -22,7 +22,7 @@ glimmer --provider mock            # interactive REPL, --verbose for tool traces
 # pnpm wrappers still work
 pnpm cli --provider mock "What's the weather in Seattle tomorrow?"
 pnpm test                           # vitest — all mocked, no network
-pnpm eval --mock                    # runs 45 cases against mock, writes evals/COMPARISON.md
+pnpm eval --mock                    # runs 45 cases against mock, writes evals/COMPARISON-MOCK.md
 ```
 
 ## With a local model (Ollama) — Muse Glimmer 30B
@@ -85,10 +85,10 @@ Add a new tool: define in `catalog.ts`, add handler in `handlers.ts`, dispatch i
 pnpm eval --mock                              # mock only, no spend (CI)
 pnpm eval --mock --json                       # stdout JSON instead of files
 pnpm eval --live                              # live: Ollama + Spark (requires server + keys) + mock
-pnpm eval --only c01,c02 --provider mock      # subset
+pnpm eval --only=c01,c02 --provider=mock      # subset
 ```
 
-Output: `evals/results/<timestamp>.json` + `evals/COMPARISON.md` (also snapshot `<timestamp>.md`). Metrics: tool-selection precision/recall/F1, arg correctness (exact), multi-turn success, negative-correct, p50/p95/avg latency, cost.
+Output: `evals/results/<timestamp>.json` + `evals/COMPARISON.md` (mock-only runs write `evals/COMPARISON-MOCK.md` instead; also snapshot `<timestamp>.md`). Metrics: tool-selection precision/recall/F1, arg correctness (exact), multi-turn success, negative-correct, p50/p95/avg latency, cost.
 
 Example `evals/COMPARISON.md` header:
 

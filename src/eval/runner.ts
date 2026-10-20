@@ -6,12 +6,13 @@
  *   pnpm eval              # mock by default (no keys, no server)
  *   pnpm eval --mock       # same
  *   pnpm eval --live       # requires Ollama + Spark credentials, runs both providers
- *   pnpm eval --only c01,c02 --provider mock
+ *   pnpm eval --only=c01,c02 --provider=mock
  *   pnpm eval --json       # emit JSON to stdout instead of writing files
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { runLoop } from "@/src/agent/loop";
 import { MockProvider } from "@/src/providers/mock";
 import { MuseSparkProvider } from "@/src/providers/muse-spark";
@@ -20,6 +21,7 @@ import type { ModelProvider } from "@/src/providers/types";
 import {
   type CaseResult,
   computeMetrics,
+  makeReport,
   type ProviderReport,
   writeResults,
 } from "./report";
@@ -50,22 +52,37 @@ const yellow = (s: string) => color(s, 33);
 const red = (s: string) => color(s, 31);
 const cyan = (s: string) => color(s, 36);
 
-function parseArgs(): {
+export function parseArgs(argv: string[] = process.argv.slice(2)): {
   mock: boolean;
   live: boolean;
   json: boolean;
   onlyIds: string[] | null;
   providerFilter: string | null;
 } {
-  const argv = process.argv.slice(2);
-  const onlyArg = argv.find((a) => a.startsWith("--only="));
-  const provArg = argv.find((a) => a.startsWith("--provider="));
+  let mockFlag = false;
+  let live = false;
+  let json = false;
+  let onlyIds: string[] | null = null;
+  let providerFilter: string | null = null;
+  for (const arg of argv) {
+    if (arg === "--mock") mockFlag = true;
+    else if (arg === "--live") live = true;
+    else if (arg === "--json") json = true;
+    else if (arg.startsWith("--only="))
+      onlyIds = arg.slice("--only=".length).split(",");
+    else if (arg.startsWith("--provider=")) {
+      const v = arg.slice("--provider=".length);
+      if (v !== "mock" && v !== "glimmer" && v !== "spark")
+        throw new Error(`Unknown provider: ${v} (use glimmer|spark|mock)`);
+      providerFilter = v;
+    } else throw new Error(`Unknown argument: ${arg}`);
+  }
   return {
-    mock: argv.includes("--mock") || !argv.includes("--live"),
-    live: argv.includes("--live"),
-    json: argv.includes("--json"),
-    onlyIds: onlyArg ? onlyArg.slice("--only=".length).split(",") : null,
-    providerFilter: provArg ? provArg.slice("--provider=".length) : null,
+    mock: mockFlag || !live,
+    live,
+    json,
+    onlyIds,
+    providerFilter,
   };
 }
 
@@ -224,7 +241,13 @@ async function runProvider(
 }
 
 async function main() {
-  const opts = parseArgs();
+  let opts: ReturnType<typeof parseArgs>;
+  try {
+    opts = parseArgs();
+  } catch (err) {
+    console.error(red(err instanceof Error ? err.message : String(err)));
+    process.exit(1);
+  }
   const casesFile = path.join(process.cwd(), "evals", "cases.json");
   if (!fs.existsSync(casesFile)) {
     console.error(red(`✗ cases file not found: ${casesFile}`));
@@ -249,7 +272,6 @@ async function main() {
       providers = [new OllamaProvider()];
     else if (opts.providerFilter === "spark")
       providers = [new MuseSparkProvider()];
-    else providers = [new MockProvider()];
   } else {
     // Default: mock only (CI-safe)
     providers = [new MockProvider()];
@@ -273,6 +295,20 @@ async function main() {
 
   const reports: ProviderReport[] = [];
   for (const p of providers) {
+    if (opts.live && p instanceof MuseSparkProvider && !p.hasCredentials()) {
+      const spark = p;
+      if (!opts.json)
+        console.log(dim(`Skipping spark:${spark.model} — no credentials`));
+      reports.push({
+        provider: "spark",
+        model: spark.model,
+        cases: [],
+        metrics: computeMetrics([]),
+        skipped: true,
+        skipReason: "no credentials",
+      });
+      continue;
+    }
     if (!opts.json)
       process.stdout.write(dim(`Running ${p.id}:${p.model} ... `));
     const rep = await runProvider(p, cases);
@@ -286,19 +322,19 @@ async function main() {
   }
 
   if (opts.json) {
-    console.log(
-      JSON.stringify(
-        { timestamp: new Date().toISOString(), providers: reports },
-        null,
-        2,
-      ),
-    );
+    console.log(JSON.stringify(makeReport(reports).json, null, 2));
     return;
   }
 
   const { jsonPath, mdPath } = writeResults(reports);
   console.log(bold("\nSummary"));
   for (const r of reports) {
+    if (r.skipped) {
+      console.log(
+        `  ${cyan(r.provider)} (${r.model}): skipped — ${r.skipReason ?? "skipped"} (excluded from scoring)`,
+      );
+      continue;
+    }
     const m = r.metrics;
     console.log(
       `  ${cyan(r.provider)} (${r.model}): ${green(`${m.pass}/${m.total} PASS`)} ${m.fail ? red(`${m.fail} FAIL`) : ""} · F1 ${m.f1} · arg ${m.argAccuracy} · p50 ${m.p50}ms`,
@@ -317,7 +353,20 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(red("✗ Fatal: "), err);
-  process.exit(1);
-});
+const isMain = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  if (entry.endsWith("runner.ts")) return true;
+  try {
+    return fileURLToPath(import.meta.url) === path.resolve(entry);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  main().catch((err) => {
+    console.error(red("✗ Fatal: "), err);
+    process.exit(1);
+  });
+}

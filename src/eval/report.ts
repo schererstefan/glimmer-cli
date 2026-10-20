@@ -28,6 +28,8 @@ export type CaseResult = {
 export type ProviderReport = {
   provider: string;
   model: string;
+  skipped?: boolean;
+  skipReason?: string;
   cases: CaseResult[];
   metrics: {
     total: number;
@@ -119,16 +121,53 @@ export function computeMetrics(cases: CaseResult[]): ProviderReport["metrics"] {
   };
 }
 
+function isMockOnly(providers: ProviderReport[]): boolean {
+  if (providers.length === 0) return false;
+  const active = providers.filter((p) => !p.skipped);
+  return active.length > 0 && active.every((p) => p.provider === "mock");
+}
+
+function reportMode(providers: ProviderReport[]): string {
+  return isMockOnly(providers) ? "mock-only" : "mixed/live";
+}
+
+function providerLabel(p: ProviderReport): string {
+  if (p.skipped) {
+    const reason =
+      p.skipReason ?? (p.provider === "spark" ? "no credentials" : undefined);
+    return reason
+      ? `${p.provider} (${reason} — skipped)`
+      : `${p.provider} (skipped)`;
+  }
+  return `${p.provider} (${p.model})`;
+}
+
+function providerProvenance(p: ProviderReport): string {
+  if (p.skipped) return `${providerLabel(p)} [${p.provider}:${p.model}]`;
+  return `${p.provider}:${p.model}`;
+}
+
 export function makeReport(providers: ProviderReport[]): {
   json: unknown;
   markdown: string;
 } {
   const timestamp = new Date().toISOString();
-  const json = { timestamp, providers };
+  const mode = reportMode(providers);
+  const mockOnly = isMockOnly(providers);
+  const json = { timestamp, mode, providers };
 
-  let md = `# Glimmer vs Muse Spark 1.2 — Eval Report\n\n`;
+  let md = mockOnly
+    ? `# Mock only — no model comparison\n\n`
+    : `# Glimmer vs Muse Spark 1.2 — Eval Report\n\n`;
   md += `**Generated:** ${timestamp}\n\n`;
-  md += `| Metric | ${providers.map((p) => `${p.provider} (${p.model})`).join(" | ")} | Delta |\n`;
+  md += `Mode: ${mode}\n\n`;
+  md += `Providers: ${providers.map((p) => providerProvenance(p)).join(", ")}\n\n`;
+  for (const p of providers) {
+    if (p.skipped) {
+      md += `Note: ${providerLabel(p)} — skipped (${p.skipReason ?? "no credentials"}), excluded from scoring.\n\n`;
+    }
+  }
+  md += `| Metric | ${providers.map((p) => providerLabel(p)).join(" | ")} | Delta |\n`;
   md += `|---|${providers.map(() => "---").join("|")}|---|\n`;
 
   const rows: Array<[string, (m: ProviderReport["metrics"]) => string]> = [
@@ -149,9 +188,9 @@ export function makeReport(providers: ProviderReport[]): {
   ];
 
   for (const [label, getter] of rows) {
-    const vals = providers.map((p) => getter(p.metrics));
+    const vals = providers.map((p) => (p.skipped ? "—" : getter(p.metrics)));
     let delta = "";
-    if (providers.length === 2) {
+    if (providers.length === 2 && !providers.some((p) => p.skipped)) {
       // Numeric delta where possible
       const a = providers[0].metrics as Record<string, number>;
       const b = providers[1].metrics as Record<string, number>;
@@ -175,7 +214,11 @@ export function makeReport(providers: ProviderReport[]): {
 
   md += `\n## Per-provider breakdown\n\n`;
   for (const p of providers) {
-    md += `### ${p.provider} (${p.model})\n\n`;
+    md += `### ${providerLabel(p)}\n\n`;
+    if (p.skipped) {
+      md += `Skipped: ${p.skipReason ?? "no credentials"} — excluded from scoring.\n\n`;
+      continue;
+    }
     md += `| ID | Category | Expected | Actual | Verdict | Latency |\n`;
     md += `|---|---|---|---|---|---|\n`;
     for (const c of p.cases) {
@@ -209,9 +252,11 @@ export function writeResults(
   const { json, markdown } = makeReport(reports);
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const jsonPath = path.join(outDir, `${ts}.json`);
-  const mdPath = path.join(outDir, "..", "COMPARISON.md");
+  const mdFilename = isMockOnly(reports)
+    ? "COMPARISON-MOCK.md"
+    : "COMPARISON.md";
+  const mdPath = path.join(outDir, "..", mdFilename);
   fs.writeFileSync(jsonPath, JSON.stringify(json, null, 2));
-  // Also write latest COMPARISON.md at evals/COMPARISON.md
   fs.writeFileSync(mdPath, markdown);
   // And a snapshot copy alongside JSON
   fs.writeFileSync(path.join(outDir, `${ts}.md`), markdown);

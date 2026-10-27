@@ -78,6 +78,48 @@ describe("runLoop", () => {
     expect(result.rounds).toBeGreaterThanOrEqual(1);
   });
 
+  it("surfaces provider error as result.error", async () => {
+    const fakeProvider = {
+      id: "fake",
+      model: "fake",
+      async *chat() {
+        yield { type: "text" as const, text: "partial failure text" };
+        yield { type: "done" as const, reason: "error" as const };
+      },
+      async complete() {
+        return { text: "", toolCalls: [] };
+      },
+    } as unknown as import("@/src/providers/types").ModelProvider;
+
+    const result = await runLoop({
+      provider: fakeProvider,
+      messages: [{ role: "user", content: "hello" }],
+    });
+    expect(result.error).toBe("provider_error");
+    expect(result.text).toContain("partial failure text");
+  });
+
+  it("does not set error on successful stop", async () => {
+    const fakeProvider = {
+      id: "fake",
+      model: "fake",
+      async *chat() {
+        yield { type: "text" as const, text: "hello world" };
+        yield { type: "done" as const, reason: "stop" as const };
+      },
+      async complete() {
+        return { text: "", toolCalls: [] };
+      },
+    } as unknown as import("@/src/providers/types").ModelProvider;
+
+    const result = await runLoop({
+      provider: fakeProvider,
+      messages: [{ role: "user", content: "hello" }],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.text).toContain("hello world");
+  });
+
   it("unknown tool doesn't crash loop (provider mock won't emit unknown, so test dispatch directly)", async () => {
     // This is a dispatcher test - ensure runLoop handles arbitrary provider tool name via registry error result
     const fakeProvider = {

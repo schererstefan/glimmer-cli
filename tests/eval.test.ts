@@ -6,6 +6,7 @@ import {
   type CaseResult,
   computeMetrics,
   makeReport,
+  mockGateOk,
   type ProviderReport,
   writeResults,
 } from "@/src/eval/report";
@@ -152,6 +153,50 @@ describe("makeReport", () => {
     expect(markdown).toContain("mock");
     expect(markdown).toContain("ollama");
     expect((json as { timestamp: string }).timestamp).toBeDefined();
+  });
+});
+
+describe("mockGateOk", () => {
+  function gateReport(cases: CaseResult[]): { providers: ProviderReport[] } {
+    return {
+      providers: [
+        {
+          provider: "mock",
+          model: "mock-glimmer-v1",
+          cases,
+          metrics: computeMetrics(cases),
+        },
+      ],
+    };
+  }
+
+  it("passes when total is 45 with no fail or partial", () => {
+    const cases = Array.from({ length: 45 }, (_, i) =>
+      fakeCase({ id: `c${String(i + 1).padStart(2, "0")}` }),
+    );
+    expect(mockGateOk(gateReport(cases))).toBe(true);
+  });
+
+  it("fails when any case fails", () => {
+    const cases = Array.from({ length: 45 }, (_, i) =>
+      fakeCase({
+        id: `c${String(i + 1).padStart(2, "0")}`,
+        verdict: i === 0 ? "FAIL" : "PASS",
+        toolSelectionCorrect: i !== 0,
+      }),
+    );
+    expect(mockGateOk(gateReport(cases))).toBe(false);
+  });
+
+  it("fails when total is not 45 or any case is partial", () => {
+    const partialCases = Array.from({ length: 45 }, (_, i) =>
+      fakeCase({
+        id: `c${String(i + 1).padStart(2, "0")}`,
+        verdict: i === 0 ? "PARTIAL" : "PASS",
+      }),
+    );
+    expect(mockGateOk(gateReport(partialCases))).toBe(false);
+    expect(mockGateOk(gateReport([fakeCase({ id: "c01" })]))).toBe(false);
   });
 });
 

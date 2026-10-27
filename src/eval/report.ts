@@ -147,6 +147,17 @@ function providerProvenance(p: ProviderReport): string {
   return `${p.provider}:${p.model}`;
 }
 
+export function mockGateOk(report: { providers: ProviderReport[] }): boolean {
+  const p = report.providers[0];
+  return (
+    !!p &&
+    !p.skipped &&
+    p.metrics.total === 45 &&
+    p.metrics.fail === 0 &&
+    p.metrics.partial === 0
+  );
+}
+
 export function makeReport(providers: ProviderReport[]): {
   json: unknown;
   markdown: string;

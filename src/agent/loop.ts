@@ -29,6 +29,7 @@ export type LoopResult = {
   text: string;
   toolCalls: ToolCall[];
   rounds: number;
+  error?: string;
 };
 
 export async function runLoop(options: LoopOptions): Promise<LoopResult> {
@@ -61,6 +62,14 @@ export async function runLoop(options: LoopOptions): Promise<LoopResult> {
         allToolCalls.push(delta.toolCall);
         onToolUse?.(delta.toolCall.name, delta.toolCall.input);
       } else if (delta.type === "done") {
+        if (delta.reason === "error") {
+          return {
+            text: fullText,
+            toolCalls: allToolCalls,
+            rounds,
+            error: "provider_error",
+          };
+        }
         if (delta.reason === "stop" && toolCalls.length === 0) {
           // Done without tools — return final text
           return { text: fullText, toolCalls: allToolCalls, rounds };

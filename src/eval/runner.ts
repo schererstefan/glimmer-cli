@@ -323,6 +323,9 @@ async function main() {
 
   if (opts.json) {
     console.log(JSON.stringify(makeReport(reports).json, null, 2));
+    if (reports.some((r) => !r.skipped && r.metrics.fail > 0)) {
+      process.exitCode = 1;
+    }
     return;
   }
 

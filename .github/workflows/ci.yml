@@ -22,4 +22,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm eval --mock --json > /tmp/eval.json && echo "mock eval ok" && cat /tmp/eval.json | head -n 40
+      - run: pnpm eval --mock --json > /tmp/eval.json
+      - run: node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync("/tmp/eval.json","utf-8"));const p=r.providers&&r.providers[0];if(!p||p.skipped||!p.metrics||p.metrics.total!==45||p.metrics.fail!==0||p.metrics.partial!==0){console.error("mock eval gate failed:",JSON.stringify(p&&p.metrics));process.exit(1);}' && echo "mock eval ok"

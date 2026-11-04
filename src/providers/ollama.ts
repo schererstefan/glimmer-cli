@@ -199,8 +199,42 @@ export class OllamaProvider implements ModelProvider {
       if (buffer.trim()) {
         try {
           const evt = JSON.parse(buffer.trim()) as Record<string, unknown>;
-          const msg = evt.message as { content?: string } | undefined;
+          const msg = evt.message as
+            | {
+                content?: string;
+                tool_calls?: Array<{
+                  id?: string;
+                  function: {
+                    name: string;
+                    arguments: Record<string, unknown> | string;
+                  };
+                }>;
+              }
+            | undefined;
           if (msg?.content) yield { type: "text", text: msg.content } as Delta;
+          if (msg?.tool_calls) {
+            for (const tc of msg.tool_calls) {
+              const args =
+                typeof tc.function.arguments === "string"
+                  ? (() => {
+                      try {
+                        return JSON.parse(
+                          tc.function.arguments as string,
+                        ) as Record<string, unknown>;
+                      } catch {
+                        return { _raw: tc.function.arguments };
+                      }
+                    })()
+                  : (tc.function.arguments as Record<string, unknown>);
+              const call: ToolCall = {
+                id: tc.id ?? `call_${Math.random().toString(36).slice(2, 8)}`,
+                name: tc.function.name,
+                input: args,
+              };
+              pendingToolCalls.push(call);
+            }
+            doneReason = "tool_use";
+          }
         } catch {
           // ignore
         }

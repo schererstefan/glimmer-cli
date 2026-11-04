@@ -77,6 +77,19 @@ function streamResponse(bodyText: string, status = 200): Response {
   return new Response(body, { status });
 }
 
+function chunkedStreamResponse(chunks: string[], status = 200): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, { status });
+}
+
 describe("MockProvider", () => {
   it("has id mock and default model", () => {
     const p = new MockProvider();
@@ -369,5 +382,155 @@ describe("providers with stubbed fetch", () => {
     );
     expect(textOf(deltas)).toContain("spark hi");
     expect(deltas.at(-1)).toEqual({ type: "done", reason: "stop" });
+  });
+
+  it("MuseSpark multi-chunk stream reassembles split tool arguments", async () => {
+    const firstEvent = `data: ${JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_spark_1",
+                function: {
+                  name: "get_weather",
+                  arguments: '{"location":"Sea',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })}\n\n`;
+    const secondEvent = `data: ${JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: 'ttle","day":"tomorrow"}' },
+              },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    })}\n\ndata: [DONE]\n\n`;
+    const fullBody = `${firstEvent}${secondEvent}`;
+    const cut = fullBody.indexOf("Sea") + 2;
+    expect(cut).toBeGreaterThan(2);
+    const fetchStub = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        chunkedStreamResponse([
+          fullBody.slice(0, cut),
+          fullBody.slice(cut, cut + 1),
+          fullBody.slice(cut + 1),
+        ]),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new MuseSparkProvider({
+      apiKey: "sk-test",
+      baseUrl: "https://api.muse-spark.live/v1",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "What's the weather in Seattle?" }],
+        tools,
+      }),
+    );
+    const toolDelta = deltas.find(
+      (d): d is Extract<Delta, { type: "tool_use" }> => d.type === "tool_use",
+    );
+    expect(toolDelta?.toolCall.name).toBe("get_weather");
+    expect(toolDelta?.toolCall.input.location).toBe("Seattle");
+    expect(toolDelta?.toolCall.input.day).toBe("tomorrow");
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "tool_use" });
+  });
+
+  it("Ollama unterminated final line still emits tool calls", async () => {
+    const line = JSON.stringify({
+      message: {
+        content: "Hi ",
+        tool_calls: [
+          {
+            id: "call_1",
+            function: {
+              name: "get_weather",
+              arguments: { location: "Seattle" },
+            },
+          },
+        ],
+      },
+      done: true,
+    });
+    const fetchStub = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        streamResponse(line),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new OllamaProvider({
+      host: "http://localhost:11434",
+      model: "llama3.1:8b",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "What's the weather in Seattle?" }],
+        tools,
+      }),
+    );
+    expect(textOf(deltas)).toContain("Hi");
+    const toolDelta = deltas.find(
+      (d): d is Extract<Delta, { type: "tool_use" }> => d.type === "tool_use",
+    );
+    expect(toolDelta?.toolCall.name).toBe("get_weather");
+    expect(toolDelta?.toolCall.input.location).toBe("Seattle");
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "tool_use" });
+  });
+
+  it("MuseSpark unterminated final data line still emits tool calls", async () => {
+    const finalLine = `data: ${JSON.stringify({
+      choices: [
+        {
+          delta: {
+            content: "checking ",
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_1",
+                function: {
+                  name: "get_weather",
+                  arguments: JSON.stringify({ location: "Seattle" }),
+                },
+              },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    })}`;
+    const fetchStub = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) =>
+        streamResponse(finalLine),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new MuseSparkProvider({
+      apiKey: "sk-test",
+      baseUrl: "https://api.muse-spark.live/v1",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "What's the weather in Seattle?" }],
+        tools,
+      }),
+    );
+    expect(textOf(deltas)).toContain("checking");
+    const toolDelta = deltas.find(
+      (d): d is Extract<Delta, { type: "tool_use" }> => d.type === "tool_use",
+    );
+    expect(toolDelta?.toolCall.name).toBe("get_weather");
+    expect(toolDelta?.toolCall.input.location).toBe("Seattle");
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "tool_use" });
   });
 });

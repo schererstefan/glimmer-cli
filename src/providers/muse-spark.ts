@@ -197,6 +197,47 @@ export class MuseSparkProvider implements ModelProvider {
           }
         }
       }
+      // Flush unterminated trailing line, if any
+      if (buffer.startsWith("data:")) {
+        const data = buffer.slice(5).trim();
+        if (data && data !== "[DONE]") {
+          try {
+            const evt = JSON.parse(data) as {
+              choices?: Array<{
+                delta?: {
+                  content?: string;
+                  tool_calls?: Array<{
+                    id?: string;
+                    index?: number;
+                    function?: { name?: string; arguments?: string };
+                  }>;
+                };
+                finish_reason?: string;
+              }>;
+            };
+            const choice = evt.choices?.[0];
+            const delta = choice?.delta;
+            if (delta?.content) {
+              yield { type: "text", text: delta.content } as Delta;
+            }
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = String(tc.index ?? tc.id ?? "0");
+                const existing = toolCallsById.get(idx) ?? {
+                  name: "",
+                  args: "",
+                };
+                if (tc.function?.name) existing.name = tc.function.name;
+                if (tc.function?.arguments)
+                  existing.args += tc.function.arguments;
+                toolCallsById.set(idx, existing);
+              }
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      }
       // Emit aggregated tool calls
       for (const [id, v] of toolCallsById) {
         if (!v.name) continue;

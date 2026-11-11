@@ -126,5 +126,12 @@ export async function runLoop(options: LoopOptions): Promise<LoopResult> {
     // If caller sees fullText still empty, they'll get it next round's text
   }
 
-  return { text: fullText, toolCalls: allToolCalls, rounds };
+  // Loop exhausted MAX_TOOL_ROUNDS without a clean stop — report the
+  // truncation while keeping accumulated partial work.
+  return {
+    text: fullText,
+    toolCalls: allToolCalls,
+    rounds,
+    error: "max_rounds",
+  };
 }

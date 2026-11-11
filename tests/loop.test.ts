@@ -51,17 +51,71 @@ describe("runLoop", () => {
   });
 
   it("limits to MAX_TOOL_ROUNDS", async () => {
-    // Mock provider that always wants a tool will cause loop to iterate; ensure it stops at 4
-    const provider = new MockProvider();
-    // Use a prompt that will always trigger a tool, so loop will keep going until tool results + next call returns no tool
-    // For MockProvider, second call prompt is the tool result history; lastUserText still returns original prompt, so it would re-trigger forever if we didn't have tool handling.
-    // Our MockProvider will still see the same last user text (tool results are role: tool, not user), so it re-triggers.
-    // However runLoop should still cap at 4 rounds. We test that rounds <=4
+    // A provider that always wants a tool keeps the loop going until it
+    // exhausts MAX_TOOL_ROUNDS; the result must report the truncation.
+    const fakeProvider = {
+      id: "always-tool",
+      model: "always-tool",
+      async *chat() {
+        yield {
+          type: "tool_use" as const,
+          toolCall: {
+            id: "call-1",
+            name: "calculate",
+            input: { expression: "2+2" },
+          },
+        };
+        yield { type: "done" as const, reason: "tool_use" as const };
+      },
+      async complete() {
+        return { text: "", toolCalls: [] };
+      },
+    } as unknown as import("@/src/providers/types").ModelProvider;
+
     const result = await runLoop({
-      provider,
+      provider: fakeProvider,
       messages: [{ role: "user", content: "Calculate 2+2" }],
     });
     expect(result.rounds).toBeLessThanOrEqual(4);
+    expect(result.rounds).toBe(4);
+    expect(result.error).toBe("max_rounds");
+    // Partial work is preserved: one calculate call per round.
+    expect(result.toolCalls).toHaveLength(4);
+  });
+
+  it("does not set error when loop finishes in 2 rounds", async () => {
+    let calls = 0;
+    const fakeProvider = {
+      id: "one-tool",
+      model: "one-tool",
+      async *chat() {
+        calls++;
+        if (calls === 1) {
+          yield {
+            type: "tool_use" as const,
+            toolCall: {
+              id: "call-1",
+              name: "calculate",
+              input: { expression: "2+2" },
+            },
+          };
+          yield { type: "done" as const, reason: "tool_use" as const };
+        } else {
+          yield { type: "text" as const, text: "4" };
+          yield { type: "done" as const, reason: "stop" as const };
+        }
+      },
+      async complete() {
+        return { text: "", toolCalls: [] };
+      },
+    } as unknown as import("@/src/providers/types").ModelProvider;
+
+    const result = await runLoop({
+      provider: fakeProvider,
+      messages: [{ role: "user", content: "Calculate 2+2" }],
+    });
+    expect(result.rounds).toBe(2);
+    expect(result.error).toBeUndefined();
   });
 
   it("handles file not found tool error gracefully", async () => {

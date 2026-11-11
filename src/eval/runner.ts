@@ -162,6 +162,7 @@ async function runProvider(
       finalText = res.text;
       tools = res.toolCalls.map((tc) => tc.name);
       args = res.toolCalls.map((tc) => tc.input);
+      if (res.error) error = res.error;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       finalText = `[error: ${error}]`;
@@ -210,7 +211,10 @@ async function runProvider(
       verdict = "FAIL";
       notes.push(`must_include check failed`);
     }
-    if (error) notes.push(`error: ${error}`);
+    if (error) {
+      verdict = "FAIL";
+      notes.push(`error: ${error}`);
+    }
 
     results.push({
       id: c.id,

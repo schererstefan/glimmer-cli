@@ -188,10 +188,13 @@ async function chatOnce(
       );
     }
     process.stdout.write("\n");
+    if (result.error && !opts.verbose) {
+      console.error(red(`✗ ${result.error}`));
+    }
     if (opts.verbose) {
       console.log(
         dim(
-          `\n  done — ${latency}ms · ${result.rounds} round(s) · ${result.toolCalls.length} tool call(s)`,
+          `\n  done — ${latency}ms · ${result.rounds} round(s) · ${result.toolCalls.length} tool call(s)${result.error ? ` · error: ${result.error}` : ""}`,
         ),
       );
     }

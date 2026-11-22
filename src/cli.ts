@@ -10,7 +10,9 @@
  *   pnpm cli                  # REPL
  */
 
+import path from "node:path";
 import readline from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 import { runLoop } from "@/src/agent/loop";
 import { MockProvider } from "@/src/providers/mock";
 import { MuseSparkProvider } from "@/src/providers/muse-spark";
@@ -27,7 +29,7 @@ type CliArgs = {
   prompt?: string;
 };
 
-function parseArgs(argv: string[]): CliArgs {
+export function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     help: false,
     verbose: false,
@@ -274,7 +276,20 @@ async function main() {
   if (!args.json) console.log(dim("\nbye."));
 }
 
-main().catch((err) => {
-  console.error(red("✗ Fatal: "), err);
-  process.exit(1);
-});
+const isMain = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  if (entry.endsWith("cli.ts")) return true;
+  try {
+    return fileURLToPath(import.meta.url) === path.resolve(entry);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  main().catch((err) => {
+    console.error(red("✗ Fatal: "), err);
+    process.exit(1);
+  });
+}

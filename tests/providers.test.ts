@@ -362,6 +362,89 @@ describe("providers with stubbed fetch", () => {
     expect(deltas.at(-1)).toEqual({ type: "done", reason: "stop" });
   });
 
+  it("Ollama OpenAI compat aggregates a tool call split across SSE chunks", async () => {
+    const firstEvent = `data: ${JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_1",
+                function: {
+                  name: "get_weather",
+                  arguments: '{"location":"Sea',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })}\n\n`;
+    const secondEvent = `data: ${JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: 'ttle","day":"tom' },
+              },
+            ],
+          },
+        },
+      ],
+    })}\n\n`;
+    const thirdEvent = `data: ${JSON.stringify({
+      choices: [
+        {
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: 'orrow"}' },
+              },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    })}\n\ndata: [DONE]\n\n`;
+    const fetchStub = vi.fn(
+      async (input: string | URL | Request, _init?: RequestInit) => {
+        if (String(input).includes("/v1/chat/completions")) {
+          return chunkedStreamResponse([firstEvent, secondEvent, thirdEvent]);
+        }
+        return new Response("model not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    const p = new OllamaProvider({
+      host: "http://localhost:11434",
+      model: "llama3.1:8b",
+    });
+    const deltas = await collectDeltas(
+      p.chat({
+        messages: [{ role: "user", content: "What's the weather in Seattle?" }],
+        tools,
+      }),
+    );
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+    expect(String(fetchStub.mock.calls[1]?.[0])).toContain(
+      "/v1/chat/completions",
+    );
+    const toolDeltas = deltas.filter(
+      (d): d is Extract<Delta, { type: "tool_use" }> => d.type === "tool_use",
+    );
+    expect(toolDeltas).toHaveLength(1);
+    expect(toolDeltas[0]?.toolCall.name).toBe("get_weather");
+    expect(toolDeltas[0]?.toolCall.input).toEqual({
+      location: "Seattle",
+      day: "tomorrow",
+    });
+    expect(deltas.at(-1)).toEqual({ type: "done", reason: "tool_use" });
+  });
+
   it("MuseSpark streamed chunk parses", async () => {
     const fetchStub = vi.fn(
       async (_input: string | URL | Request, _init?: RequestInit) =>

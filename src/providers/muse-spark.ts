@@ -4,6 +4,7 @@
  * Falls back to mock behavior when credentials are absent (so tests never require keys).
  */
 
+import { parseSseDataLine, SseToolCallAggregator } from "./sse";
 import type { ChatOptions, Delta, ModelProvider, ToolCall } from "./types";
 
 type OpenAITool = {
@@ -144,7 +145,7 @@ export class MuseSparkProvider implements ModelProvider {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    const toolCallsById = new Map<string, { name: string; args: string }>();
+    const toolCalls = new SseToolCallAggregator();
 
     try {
       while (true) {
@@ -154,107 +155,30 @@ export class MuseSparkProvider implements ModelProvider {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const data = line.slice(5).trim();
-          if (!data || data === "[DONE]") continue;
-          try {
-            const evt = JSON.parse(data) as {
-              choices?: Array<{
-                delta?: {
-                  content?: string;
-                  tool_calls?: Array<{
-                    id?: string;
-                    index?: number;
-                    function?: { name?: string; arguments?: string };
-                  }>;
-                };
-                finish_reason?: string;
-              }>;
-            };
-            const choice = evt.choices?.[0];
-            const delta = choice?.delta;
-            if (delta?.content) {
-              yield { type: "text", text: delta.content } as Delta;
-            }
-            if (delta?.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                const idx = String(tc.index ?? tc.id ?? "0");
-                const existing = toolCallsById.get(idx) ?? {
-                  name: "",
-                  args: "",
-                };
-                if (tc.function?.name) existing.name = tc.function.name;
-                if (tc.function?.arguments)
-                  existing.args += tc.function.arguments;
-                toolCallsById.set(idx, existing);
-              }
-            }
-            if (choice?.finish_reason === "tool_calls") {
-              // flush
-            }
-          } catch {
-            // ignore parse errors
+          const evt = parseSseDataLine(line);
+          if (!evt) continue;
+          const delta = evt.choices?.[0]?.delta;
+          if (delta?.content) {
+            yield { type: "text", text: delta.content } as Delta;
           }
+          toolCalls.add(delta?.tool_calls);
         }
       }
       // Flush unterminated trailing line, if any
-      if (buffer.startsWith("data:")) {
-        const data = buffer.slice(5).trim();
-        if (data && data !== "[DONE]") {
-          try {
-            const evt = JSON.parse(data) as {
-              choices?: Array<{
-                delta?: {
-                  content?: string;
-                  tool_calls?: Array<{
-                    id?: string;
-                    index?: number;
-                    function?: { name?: string; arguments?: string };
-                  }>;
-                };
-                finish_reason?: string;
-              }>;
-            };
-            const choice = evt.choices?.[0];
-            const delta = choice?.delta;
-            if (delta?.content) {
-              yield { type: "text", text: delta.content } as Delta;
-            }
-            if (delta?.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                const idx = String(tc.index ?? tc.id ?? "0");
-                const existing = toolCallsById.get(idx) ?? {
-                  name: "",
-                  args: "",
-                };
-                if (tc.function?.name) existing.name = tc.function.name;
-                if (tc.function?.arguments)
-                  existing.args += tc.function.arguments;
-                toolCallsById.set(idx, existing);
-              }
-            }
-          } catch {
-            // ignore parse errors
-          }
+      const trailing = parseSseDataLine(buffer);
+      if (trailing) {
+        const delta = trailing.choices?.[0]?.delta;
+        if (delta?.content) {
+          yield { type: "text", text: delta.content } as Delta;
         }
+        toolCalls.add(delta?.tool_calls);
       }
       // Emit aggregated tool calls
-      for (const [id, v] of toolCallsById) {
-        if (!v.name) continue;
-        let parsed: Record<string, unknown> = {};
-        try {
-          parsed = v.args
-            ? (JSON.parse(v.args) as Record<string, unknown>)
-            : {};
-        } catch {
-          parsed = { _raw: v.args };
-        }
-        yield {
-          type: "tool_use",
-          toolCall: { id: `call_${id}`, name: v.name, input: parsed },
-        } as Delta;
+      const calls = toolCalls.toToolCalls();
+      for (const toolCall of calls) {
+        yield { type: "tool_use", toolCall } as Delta;
       }
-      const reason = toolCallsById.size > 0 ? "tool_use" : "stop";
+      const reason = calls.length > 0 ? "tool_use" : "stop";
       yield { type: "done", reason } as Delta;
     } catch (err) {
       yield {

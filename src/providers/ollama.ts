@@ -4,6 +4,7 @@
  * Handles tool-calling loop by forwarding tool definitions as `tools`.
  */
 
+import { parseSseDataLine, SseToolCallAggregator } from "./sse";
 import type {
   ChatMessage,
   ChatOptions,
@@ -298,6 +299,7 @@ export class OllamaProvider implements ModelProvider {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    const toolCalls = new SseToolCallAggregator();
     try {
       while (true) {
         const { value, done } = await reader.read();
@@ -306,53 +308,29 @@ export class OllamaProvider implements ModelProvider {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const data = line.slice(5).trim();
-          if (!data || data === "[DONE]") continue;
-          try {
-            const evt = JSON.parse(data) as {
-              choices?: Array<{
-                delta?: {
-                  content?: string;
-                  tool_calls?: Array<{
-                    id?: string;
-                    function?: { name?: string; arguments?: string };
-                  }>;
-                };
-              }>;
-            };
-            const delta = evt.choices?.[0]?.delta;
-            if (delta?.content)
-              yield { type: "text", text: delta.content } as Delta;
-            if (delta?.tool_calls) {
-              for (const tc of delta.tool_calls) {
-                const fn = tc.function;
-                if (!fn?.name) continue;
-                let args: Record<string, unknown> = {};
-                if (fn.arguments) {
-                  try {
-                    args = JSON.parse(fn.arguments) as Record<string, unknown>;
-                  } catch {
-                    args = { _raw: fn.arguments };
-                  }
-                }
-                yield {
-                  type: "tool_use",
-                  toolCall: {
-                    id:
-                      tc.id ?? `call_${Math.random().toString(36).slice(2, 6)}`,
-                    name: fn.name,
-                    input: args,
-                  },
-                } as Delta;
-              }
-            }
-          } catch {
-            // ignore
-          }
+          const evt = parseSseDataLine(line);
+          if (!evt) continue;
+          const delta = evt.choices?.[0]?.delta;
+          if (delta?.content)
+            yield { type: "text", text: delta.content } as Delta;
+          toolCalls.add(delta?.tool_calls);
         }
       }
-      yield { type: "done", reason: "stop" } as Delta;
+      // Flush unterminated trailing line, if any
+      const trailing = parseSseDataLine(buffer);
+      if (trailing) {
+        const delta = trailing.choices?.[0]?.delta;
+        if (delta?.content)
+          yield { type: "text", text: delta.content } as Delta;
+        toolCalls.add(delta?.tool_calls);
+      }
+      // Emit aggregated tool calls
+      const calls = toolCalls.toToolCalls();
+      for (const toolCall of calls) {
+        yield { type: "tool_use", toolCall } as Delta;
+      }
+      const reason = calls.length > 0 ? "tool_use" : "stop";
+      yield { type: "done", reason } as Delta;
     } catch (err) {
       yield {
         type: "text",
